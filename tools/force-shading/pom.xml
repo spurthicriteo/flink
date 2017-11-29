@@ -53,11 +53,7 @@ under the License.
 						<version>1.4</version>
 						<executions>
 							<execution>
-								<id>sign-artifacts</id>
-								<phase>verify</phase>
-								<goals>
-									<goal>sign</goal>
-								</goals>
+								<phase>none</phase>
 							</execution>
 						</executions>
 					</plugin>
@@ -67,18 +63,7 @@ under the License.
 						<version>1.4.1</version>
 						<executions>
 							<execution>
-								<id>enforce-maven</id>
-								<goals>
-									<goal>enforce</goal>
-								</goals>
-								<configuration>
-									<rules>
-										<requireMavenVersion>
-											<!-- maven version must be lower than 3.3. See FLINK-3158 -->
-											<version>(,3.3)</version>
-										</requireMavenVersion>
-									</rules>
-								</configuration>
+								<phase>none</phase>
 							</execution>
 						</executions>
 					</plugin>
