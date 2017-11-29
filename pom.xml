@@ -748,11 +748,7 @@ under the License.
 						<version>1.4</version>
 						<executions>
 							<execution>
-								<id>sign-artifacts</id>
-								<phase>verify</phase>
-								<goals>
-									<goal>sign</goal>
-								</goals>
+								<phase>none</phase>
 							</execution>
 						</executions>
 					</plugin>
@@ -768,10 +764,10 @@ under the License.
 								</goals>
 								<configuration>
 									<rules>
-										<requireMavenVersion>
-											<!-- maven version must be lower than 3.3. See FLINK-3158 -->
-											<version>(,3.3)</version>
-										</requireMavenVersion>
+										<!--<requireMavenVersion>-->
+											<!--&lt;!&ndash; maven version must be lower than 3.3. See FLINK-3158 &ndash;&gt;-->
+											<!--<version>(,3.3)</version>-->
+										<!--</requireMavenVersion>-->
 										<requireJavaVersion>
 											<version>1.8.0</version>
 										</requireJavaVersion>
