@@ -17,6 +17,7 @@
  */
 package org.apache.flink.runtime.security.modules;
 
+import java.io.IOException;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.flink.api.java.hadoop.mapred.utils.HadoopUtils;
 import org.apache.flink.runtime.security.SecurityUtils;
@@ -56,6 +57,29 @@ public class HadoopModule implements SecurityModule {
 				UserGroupInformation.loginUserFromKeytab(securityConfig.getPrincipal(), keytabPath);
 
 				loginUser = UserGroupInformation.getLoginUser();
+
+				Thread keyTabReloginThread = new Thread(new Runnable() {
+
+					private final static long PERIOD = 30 * 60 * 1000; // every 30 minutes
+
+					@Override
+					public void run() {
+						while (true) {
+						try {
+							LOG.info("Try to relogin via KeyTab");
+							loginUser.checkTGTAndReloginFromKeytab();
+							Thread.currentThread().sleep(PERIOD);
+						} catch (IOException e) {
+							LOG.error("Cannot relogin from keytab", e);
+						} catch (InterruptedException e) {
+							e.printStackTrace();
+						}
+						}
+					}
+				});
+				keyTabReloginThread.setName("keytab-relogin-thread");
+				keyTabReloginThread.setDaemon(true);
+				keyTabReloginThread.start();
 
 				// supplement with any available tokens
 				String fileLocation = System.getenv(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION);
