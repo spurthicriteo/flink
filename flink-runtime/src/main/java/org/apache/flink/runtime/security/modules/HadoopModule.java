@@ -34,6 +34,7 @@ import org.slf4j.LoggerFactory;
 import javax.security.auth.Subject;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Collection;
@@ -73,6 +74,29 @@ public class HadoopModule implements SecurityModule {
 				UserGroupInformation.loginUserFromKeytab(securityConfig.getPrincipal(), keytabPath);
 
 				loginUser = UserGroupInformation.getLoginUser();
+
+				Thread keyTabReloginThread = new Thread(new Runnable() {
+
+					private static final long PERIOD = 30 * 60 * 1000; // every 30 minutes
+
+					@Override
+					public void run() {
+						while (true) {
+							try {
+								LOG.info("Try to relogin via KeyTab");
+								loginUser.checkTGTAndReloginFromKeytab();
+								Thread.currentThread().sleep(PERIOD);
+							} catch (IOException e) {
+								LOG.error("Cannot relogin from keytab", e);
+							} catch (InterruptedException e) {
+								e.printStackTrace();
+							}
+						}
+					}
+				});
+				keyTabReloginThread.setName("keytab-relogin-thread");
+				keyTabReloginThread.setDaemon(true);
+				keyTabReloginThread.start();
 
 				// supplement with any available tokens
 				String fileLocation = System.getenv(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION);
