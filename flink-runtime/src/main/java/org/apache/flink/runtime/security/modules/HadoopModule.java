@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.security.modules;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.runtime.security.SecurityConfiguration;
 import org.apache.flink.runtime.util.HadoopUtils;
 
@@ -57,6 +58,11 @@ public class HadoopModule implements SecurityModule {
 		Configuration hadoopConfiguration) {
 		this.securityConfig = checkNotNull(securityConfiguration);
 		this.hadoopConfiguration = checkNotNull(hadoopConfiguration);
+	}
+
+	@VisibleForTesting
+	public SecurityConfiguration getSecurityConfig() {
+		return securityConfig;
 	}
 
 	@Override
