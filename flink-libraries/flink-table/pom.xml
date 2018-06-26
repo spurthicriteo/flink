@@ -304,7 +304,17 @@ under the License.
 										<!--<exclude>org.codehaus.commons.compiler.properties</exclude>-->
 									</excludes>
 								</filter>
+								<filter>
+									<artifact>org.slf4j:jcl-over-slf4j</artifact>
+									<excludes>
+										<!-- excluded all these files for a clean flink-table jar -->
+										<exclude>META-INF/services/org.apache.commons.logging.LogFactory</exclude>
+									</excludes>
+								</filter>
 							</filters>
+							<transformers>
+								<transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+							</transformers>
 							<artifactSet>
 								<includes combine.children="append">
 									<include>org.apache.calcite:*</include>
