@@ -19,13 +19,13 @@
 package org.apache.flink.runtime.rest;
 
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.runtime.rest.handler.FileUploads;
 import org.apache.flink.runtime.rest.handler.HandlerRequest;
 import org.apache.flink.runtime.rest.handler.HandlerRequestException;
 import org.apache.flink.runtime.rest.handler.RedirectHandler;
 import org.apache.flink.runtime.rest.handler.RestHandlerException;
 import org.apache.flink.runtime.rest.handler.util.HandlerUtils;
 import org.apache.flink.runtime.rest.messages.ErrorResponseBody;
-import org.apache.flink.runtime.rest.messages.FileUpload;
 import org.apache.flink.runtime.rest.messages.MessageParameters;
 import org.apache.flink.runtime.rest.messages.RequestBody;
 import org.apache.flink.runtime.rest.messages.UntypedResponseMessageHeaders;
@@ -49,8 +49,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
-import java.nio.file.Path;
+import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -90,48 +91,30 @@ public abstract class AbstractHandler<T extends RestfulGateway, R extends Reques
 
 		final HttpRequest httpRequest = routed.request();
 
+		FileUploads uploadedFiles = null;
 		try {
 			if (!(httpRequest instanceof FullHttpRequest)) {
 				// The RestServerEndpoint defines a HttpObjectAggregator in the pipeline that always returns
 				// FullHttpRequests.
 				log.error("Implementation error: Received a request that wasn't a FullHttpRequest.");
-				HandlerUtils.sendErrorResponse(
-					ctx,
-					httpRequest,
-					new ErrorResponseBody("Bad request received."),
-					HttpResponseStatus.BAD_REQUEST,
-					responseHeaders);
-				return;
+				throw new RestHandlerException("Bad request received.", HttpResponseStatus.BAD_REQUEST);
 			}
 
-			ByteBuf msgContent = ((FullHttpRequest) httpRequest).content();
+			final ByteBuf msgContent = ((FullHttpRequest) httpRequest).content();
+
+			uploadedFiles = FileUploadHandler.getMultipartFileUploads(ctx);
+
+			if (!untypedResponseMessageHeaders.acceptsFileUploads() && !uploadedFiles.getUploadedFiles().isEmpty()) {
+				throw new RestHandlerException("File uploads not allowed.", HttpResponseStatus.BAD_REQUEST);
+			}
 
 			R request;
-			if (isFileUpload()) {
-				final Path path = ctx.channel().attr(FileUploadHandler.UPLOADED_FILE).get();
-				if (path == null) {
-					HandlerUtils.sendErrorResponse(
-						ctx,
-						httpRequest,
-						new ErrorResponseBody("Client did not upload a file."),
-						HttpResponseStatus.BAD_REQUEST,
-						responseHeaders);
-					return;
-				}
-				//noinspection unchecked
-				request = (R) new FileUpload(path);
-			} else if (msgContent.capacity() == 0) {
+			if (msgContent.capacity() == 0) {
 				try {
 					request = MAPPER.readValue("{}", untypedResponseMessageHeaders.getRequestClass());
 				} catch (JsonParseException | JsonMappingException je) {
 					log.error("Request did not conform to expected format.", je);
-					HandlerUtils.sendErrorResponse(
-						ctx,
-						httpRequest,
-						new ErrorResponseBody("Bad request received."),
-						HttpResponseStatus.BAD_REQUEST,
-						responseHeaders);
-					return;
+					throw new RestHandlerException("Bad request received.", HttpResponseStatus.BAD_REQUEST, je);
 				}
 			} else {
 				try {
@@ -139,38 +122,42 @@ public abstract class AbstractHandler<T extends RestfulGateway, R extends Reques
 					request = MAPPER.readValue(in, untypedResponseMessageHeaders.getRequestClass());
 				} catch (JsonParseException | JsonMappingException je) {
 					log.error("Failed to read request.", je);
-					HandlerUtils.sendErrorResponse(
-						ctx,
-						httpRequest,
-						new ErrorResponseBody(String.format("Request did not match expected format %s.", untypedResponseMessageHeaders.getRequestClass().getSimpleName())),
+					throw new RestHandlerException(
+						String.format("Request did not match expected format %s.", untypedResponseMessageHeaders.getRequestClass().getSimpleName()),
 						HttpResponseStatus.BAD_REQUEST,
-						responseHeaders);
-					return;
+						je);
 				}
 			}
 
 			final HandlerRequest<R, M> handlerRequest;
 
 			try {
-				handlerRequest = new HandlerRequest<>(request, untypedResponseMessageHeaders.getUnresolvedMessageParameters(), routed.pathParams(), routed.queryParams());
+				handlerRequest = new HandlerRequest<>(request, untypedResponseMessageHeaders.getUnresolvedMessageParameters(), routed.pathParams(), routed.queryParams(), uploadedFiles.getUploadedFiles());
 			} catch (HandlerRequestException hre) {
 				log.error("Could not create the handler request.", hre);
-
-				HandlerUtils.sendErrorResponse(
-					ctx,
-					httpRequest,
-					new ErrorResponseBody(String.format("Bad request, could not parse parameters: %s", hre.getMessage())),
+				throw new RestHandlerException(
+					String.format("Bad request, could not parse parameters: %s", hre.getMessage()),
 					HttpResponseStatus.BAD_REQUEST,
-					responseHeaders);
-				return;
+					hre);
 			}
 
-			respondToRequest(
+			CompletableFuture<Void> requestProcessingFuture = respondToRequest(
 				ctx,
 				httpRequest,
 				handlerRequest,
 				gateway);
 
+			final FileUploads finalUploadedFiles = uploadedFiles;
+			requestProcessingFuture
+				.whenComplete((Void ignored, Throwable throwable) -> cleanupFileUploads(finalUploadedFiles));
+		} catch (RestHandlerException rhe) {
+			HandlerUtils.sendErrorResponse(
+				ctx,
+				httpRequest,
+				new ErrorResponseBody(rhe.getMessage()),
+				rhe.getHttpResponseStatus(),
+				responseHeaders);
+			cleanupFileUploads(uploadedFiles);
 		} catch (Throwable e) {
 			log.error("Request processing failed.", e);
 			HandlerUtils.sendErrorResponse(
@@ -179,11 +166,18 @@ public abstract class AbstractHandler<T extends RestfulGateway, R extends Reques
 				new ErrorResponseBody("Internal server error."),
 				HttpResponseStatus.INTERNAL_SERVER_ERROR,
 				responseHeaders);
+			cleanupFileUploads(uploadedFiles);
 		}
 	}
 
-	private boolean isFileUpload() {
-		return untypedResponseMessageHeaders.getRequestClass() == FileUpload.class;
+	private void cleanupFileUploads(@Nullable FileUploads uploadedFiles) {
+		if (uploadedFiles != null) {
+			try {
+				uploadedFiles.close();
+			} catch (IOException e) {
+				log.warn("Could not cleanup uploaded files.", e);
+			}
+		}
 	}
 
 	/**
@@ -193,9 +187,10 @@ public abstract class AbstractHandler<T extends RestfulGateway, R extends Reques
 	 * @param httpRequest original http request
 	 * @param handlerRequest typed handler request
 	 * @param gateway leader gateway
+	 * @return Future which is completed once the request has been processed
 	 * @throws RestHandlerException if an exception occurred while responding
 	 */
-	protected abstract void respondToRequest(
+	protected abstract CompletableFuture<Void> respondToRequest(
 		ChannelHandlerContext ctx,
 		HttpRequest httpRequest,
 		HandlerRequest<R, M> handlerRequest,

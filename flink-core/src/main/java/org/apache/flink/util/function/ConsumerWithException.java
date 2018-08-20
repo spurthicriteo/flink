@@ -16,20 +16,28 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.rest.messages;
+package org.apache.flink.util.function;
+
+import org.apache.flink.util.ExceptionUtils;
+
+import java.util.function.Consumer;
 
 /**
- * Tests for {@link BlobServerPortResponseBody}.
+ * A checked extension of the {@link Consumer} interface.
+ *
+ * @param <T> type of the first argument
+ * @param <E> type of the thrown exception
  */
-public class BlobServerPortResponseTest extends RestResponseMarshallingTestBase<BlobServerPortResponseBody> {
+public interface ConsumerWithException<T, E extends Throwable> extends Consumer<T> {
+
+	void acceptWithException(T value) throws E;
 
 	@Override
-	protected Class<BlobServerPortResponseBody> getTestResponseClass() {
-		return BlobServerPortResponseBody.class;
-	}
-
-	@Override
-	protected BlobServerPortResponseBody getTestResponseInstance() throws Exception {
-		return new BlobServerPortResponseBody(64);
+	default void accept(T value) {
+		try {
+			acceptWithException(value);
+		} catch (Throwable t) {
+			ExceptionUtils.rethrow(t);
+		}
 	}
 }

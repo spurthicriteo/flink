@@ -46,7 +46,7 @@ under the License.
 	<scm>
 		<url>https://github.com/apache/flink</url>
 		<connection>git@github.com:apache/flink.git</connection>
-		<developerConnection>scm:git:https://git-wip-us.apache.org/repos/asf/flink.git</developerConnection>
+		<developerConnection>scm:git:https://gitbox.apache.org/repos/asf/flink.git</developerConnection>
 	</scm>
 
 	<modules>
@@ -694,6 +694,29 @@ under the License.
 		</profile>
 
 		<profile>
+			<id>check-convergence</id>
+			<activation>
+				<property>
+					<name>check-convergence</name>
+				</property>
+			</activation>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-enforcer-plugin</artifactId>
+						<executions>
+							<execution>
+								<id>dependency-convergence</id>
+								<phase>validate</phase>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+
+		<profile>
 			<id>legacyCode</id>
 			<activation>
 				<property>
@@ -1121,6 +1144,7 @@ under the License.
 						<exclude>flink-libraries/flink-table/src/test/scala/resources/*.out</exclude>
 						<exclude>flink-yarn/src/test/resources/krb5.keytab</exclude>
 						<exclude>flink-end-to-end-tests/test-scripts/test-data/*</exclude>
+						<exclude>flink-end-to-end-tests/test-scripts/docker-hadoop-secure-cluster/config/keystore.jks</exclude>
 
 						<!-- snapshots -->
 						<exclude>**/src/test/resources/*-snapshot</exclude>
@@ -1154,6 +1178,8 @@ under the License.
 						<!-- Tools: watchdog -->
 						<exclude>tools/artifacts/**</exclude>
 						<exclude>tools/flink*/**</exclude>
+						<!-- artifacts created during release process -->
+						<exclude>tools/releasing/release/**</exclude>
 						<!-- manually installed version on travis -->
 						<exclude>apache-maven-3.2.5/**</exclude>
 						<!-- PyCharm -->
@@ -1269,6 +1295,8 @@ under the License.
 					</execution>
 					<execution>
 						<id>dependency-convergence</id>
+						<!-- disabled by default as it interacts badly with shade-plugin -->
+						<phase>none</phase>
 						<goals>
 							<goal>enforce</goal>
 						</goals>
@@ -1420,6 +1448,20 @@ under the License.
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-shade-plugin</artifactId>
 					<version>3.0.0</version>
+				</plugin>
+
+				<plugin>
+					<groupId>pl.project13.maven</groupId>
+					<artifactId>git-commit-id-plugin</artifactId>
+					<!-- Don't use 2.1.14 as it is incompatible with various maven versions --> 
+					<version>2.1.10</version>
+					<configuration>
+						<excludeProperties>
+							<excludeProperty>git.build.*</excludeProperty>
+							<excludeProperty>git.branch.*</excludeProperty>
+							<excludeProperty>git.remote.*</excludeProperty>
+						</excludeProperties>
+					</configuration>
 				</plugin>
 
 				<!-- Disable certain plugins in Eclipse -->
