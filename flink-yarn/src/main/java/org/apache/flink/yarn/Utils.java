@@ -207,7 +207,7 @@ public final class Utils {
 	public static void setTokensFor(ContainerLaunchContext amContainer, List<Path> paths, Configuration conf) throws IOException {
 		Credentials credentials = new Credentials();
 		// for HDFS
-		TokenCache.obtainTokensForNamenodes(credentials, paths.toArray(new Path[0]), conf);
+		obtainTokenForNameNode(credentials, conf, paths);
 		// for HBase
 		obtainTokenForHBase(credentials, conf);
 		// for user
@@ -228,6 +228,15 @@ public final class Utils {
 
 			ByteBuffer securityTokens = ByteBuffer.wrap(dob.getData(), 0, dob.getLength());
 			amContainer.setTokens(securityTokens);
+		}
+	}
+
+	private static void obtainTokenForNameNode(Credentials credentials, Configuration conf, List<Path> paths)
+		throws IOException {
+		try {
+			TokenCache.obtainTokensForNamenodes(credentials, paths.toArray(new Path[0]), conf);
+		} catch (Exception e){
+			LOG.error("Cannot obtain token for namenode. Try to continue launching of the AM", e);
 		}
 	}
 

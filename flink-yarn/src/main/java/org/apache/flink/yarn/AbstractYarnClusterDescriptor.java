@@ -407,8 +407,8 @@ public abstract class AbstractYarnClusterDescriptor implements ClusterDescriptor
 			if (loginUser.getAuthenticationMethod() == UserGroupInformation.AuthenticationMethod.KERBEROS
 				&& useTicketCache && !loginUser.hasKerberosCredentials()) {
 				LOG.error("Hadoop security with Kerberos is enabled but the login user does not have Kerberos credentials");
-				throw new RuntimeException("Hadoop security with Kerberos is enabled but the login user " +
-					"does not have Kerberos credentials");
+//				throw new RuntimeException("Hadoop security with Kerberos is enabled but the login user " +
+//					"does not have Kerberos credentials");
 			}
 		}
 
