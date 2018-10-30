@@ -20,6 +20,7 @@ package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.writer.ResultPartitionWriter;
@@ -40,6 +41,9 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+/**
+ * Test for consuming a pipelined result only partially.
+ */
 public class PartialConsumePipelinedResultTest extends TestLogger {
 
 	// Test configuration
@@ -54,6 +58,7 @@ public class PartialConsumePipelinedResultTest extends TestLogger {
 	@BeforeClass
 	public static void setUp() throws Exception {
 		final Configuration config = new Configuration();
+		config.setInteger(RestOptions.PORT, 0);
 		config.setString(AkkaOptions.ASK_TIMEOUT, TestingUtils.DEFAULT_AKKA_ASK_TIMEOUT());
 		config.setInteger(TaskManagerOptions.NETWORK_NUM_BUFFERS, NUMBER_OF_NETWORK_BUFFERS);
 
@@ -78,8 +83,8 @@ public class PartialConsumePipelinedResultTest extends TestLogger {
 	/**
 	 * Tests a fix for FLINK-1930.
 	 *
-	 * <p> When consuming a pipelined result only partially, is is possible that local channels
-	 * release the buffer pool, which is associated with the result partition, too early.  If the
+	 * <p>When consuming a pipelined result only partially, is is possible that local channels
+	 * release the buffer pool, which is associated with the result partition, too early. If the
 	 * producer is still producing data when this happens, it runs into an IllegalStateException,
 	 * because of the destroyed buffer pool.
 	 *

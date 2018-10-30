@@ -95,7 +95,6 @@ import org.apache.flink.runtime.rest.handler.legacy.backpressure.OperatorBackPre
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.FencedRpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcService;
-import org.apache.flink.runtime.rpc.RpcTimeout;
 import org.apache.flink.runtime.rpc.akka.AkkaRpcServiceUtils;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.taskexecutor.AccumulatorReport;
@@ -678,7 +677,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 				try {
 					checkpointCoordinator.receiveAcknowledgeMessage(ackMessage);
 				} catch (Throwable t) {
-					log.warn("Error while processing checkpoint acknowledgement message");
+					log.warn("Error while processing checkpoint acknowledgement message", t);
 				}
 			});
 		} else {
@@ -909,7 +908,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 	}
 
 	@Override
-	public CompletableFuture<JobDetails> requestJobDetails(@RpcTimeout Time timeout) {
+	public CompletableFuture<JobDetails> requestJobDetails(Time timeout) {
 		final ExecutionGraph currentExecutionGraph = executionGraph;
 		return CompletableFuture.supplyAsync(() -> WebMonitorUtils.createDetailsForJob(currentExecutionGraph), scheduledExecutorService);
 	}
@@ -1484,7 +1483,7 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId> implements JobMast
 				jobVertex.setMaxParallelism(executionJobVertex.getMaxParallelism());
 			}
 
-			rescalingBehaviour.acceptWithException(jobVertex, newParallelism);
+			rescalingBehaviour.accept(jobVertex, newParallelism);
 		}
 	}
 

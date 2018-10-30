@@ -41,13 +41,17 @@ object ExpressionParser extends JavaTokenParsers with PackratParsers {
   case class Keyword(key: String)
 
   // Convert the keyword into an case insensitive Parser
+  // The pattern ensures that the keyword is not matched as a prefix, i.e.,
+  //   the keyword is not followed by a Java identifier character.
   implicit def keyword2Parser(kw: Keyword): Parser[String] = {
-    ("""(?i)\Q""" + kw.key + """\E""").r
+    ("""(?i)\Q""" + kw.key + """\E(?![_$\p{javaJavaIdentifierPart}])""").r
   }
 
   // Keyword
   lazy val AS: Keyword = Keyword("as")
   lazy val CAST: Keyword = Keyword("cast")
+  lazy val ASC: Keyword = Keyword("asc")
+  lazy val DESC: Keyword = Keyword("desc")
   lazy val NULL: Keyword = Keyword("Null")
   lazy val IF: Keyword = Keyword("?")
   lazy val TO_DATE: Keyword = Keyword("toDate")
@@ -212,6 +216,12 @@ object ExpressionParser extends JavaTokenParsers with PackratParsers {
 
   // suffix operators
 
+  lazy val suffixAsc : PackratParser[Expression] =
+    composite <~ "." ~ ASC ~ opt("()") ^^ { e => Asc(e) }
+
+  lazy val suffixDesc : PackratParser[Expression] =
+    composite <~ "." ~ DESC ~ opt("()") ^^ { e => Desc(e) }
+
   lazy val suffixCast: PackratParser[Expression] =
     composite ~ "." ~ CAST ~ "(" ~ dataType ~ ")" ^^ {
     case e ~ _ ~ _ ~ _ ~ dt ~ _ => Cast(e, dt)
@@ -316,6 +326,8 @@ object ExpressionParser extends JavaTokenParsers with PackratParsers {
     suffixToDate |
     // expression for log
     suffixLog |
+    // expression for ordering
+    suffixAsc | suffixDesc |
     // expressions that take enumerations
     suffixCast | suffixTrim | suffixTrimWithoutArgs | suffixExtract | suffixFloor | suffixCeil |
     // expressions that take literals

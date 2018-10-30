@@ -91,6 +91,7 @@ import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import scala.concurrent.duration.FiniteDuration;
@@ -328,12 +329,17 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 				dispatcherGatewayRetriever,
 				resourceManagerGatewayRetriever,
 				transientBlobCache,
-				rpcService.getExecutor(),
+				WebMonitorEndpoint.createExecutorService(
+					configuration.getInteger(RestOptions.SERVER_NUM_THREADS),
+					configuration.getInteger(RestOptions.SERVER_THREAD_PRIORITY),
+					"DispatcherRestEndpoint"),
 				new AkkaQueryServiceRetriever(actorSystem, timeout),
 				highAvailabilityServices.getWebMonitorLeaderElectionService());
 
 			LOG.debug("Starting Dispatcher REST endpoint.");
 			webMonitorEndpoint.start();
+
+			jobManagerMetricGroup = MetricUtils.instantiateJobManagerMetricGroup(metricRegistry, rpcService.getAddress());
 
 			resourceManager = createResourceManager(
 				configuration,
@@ -344,9 +350,8 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 				metricRegistry,
 				this,
 				clusterInformation,
-				webMonitorEndpoint.getRestBaseUrl());
-
-			jobManagerMetricGroup = MetricUtils.instantiateJobManagerMetricGroup(metricRegistry, rpcService.getAddress());
+				webMonitorEndpoint.getRestBaseUrl(),
+				jobManagerMetricGroup);
 
 			final HistoryServerArchivist historyServerArchivist = HistoryServerArchivist.createHistoryServerArchivist(configuration, webMonitorEndpoint);
 
@@ -495,10 +500,6 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 				}
 			}
 
-			if (webMonitorEndpoint != null) {
-				terminationFutures.add(webMonitorEndpoint.closeAsync());
-			}
-
 			if (dispatcher != null) {
 				dispatcher.shutDown();
 				terminationFutures.add(dispatcher.getTerminationFuture());
@@ -558,10 +559,13 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 		if (isShutDown.compareAndSet(false, true)) {
 			LOG.info("Stopping {}.", getClass().getSimpleName());
 
-			final CompletableFuture<Void> shutDownApplicationFuture = deregisterApplication(applicationStatus, diagnostics);
+			final CompletableFuture<Void> closeWebMonitorAndDeregisterAppFuture =
+				FutureUtils.composeAfterwards(
+					closeWebMonitorAsync(),
+					() -> deregisterApplication(applicationStatus, diagnostics));
 
 			final CompletableFuture<Void> componentShutdownFuture = FutureUtils.composeAfterwards(
-				shutDownApplicationFuture,
+				closeWebMonitorAndDeregisterAppFuture,
 				this::stopClusterComponents);
 
 			final CompletableFuture<Void> serviceShutdownFuture = FutureUtils.composeAfterwards(
@@ -583,6 +587,14 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 		}
 
 		return terminationFuture;
+	}
+
+	private CompletableFuture<Void> closeWebMonitorAsync() {
+		if (webMonitorEndpoint != null) {
+			return webMonitorEndpoint.closeAsync();
+		} else {
+			return CompletableFuture.completedFuture(null);
+		}
 	}
 
 	protected void shutDownAndTerminate(
@@ -674,14 +686,15 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 		MetricRegistry metricRegistry,
 		FatalErrorHandler fatalErrorHandler,
 		ClusterInformation clusterInformation,
-		@Nullable String webInterfaceUrl) throws Exception;
+		@Nullable String webInterfaceUrl,
+		JobManagerMetricGroup jobManagerMetricGroup) throws Exception;
 
 	protected abstract WebMonitorEndpoint<?> createRestEndpoint(
 		Configuration configuration,
 		LeaderGatewayRetriever<DispatcherGateway> dispatcherGatewayRetriever,
 		LeaderGatewayRetriever<ResourceManagerGateway> resourceManagerGatewayRetriever,
 		TransientBlobService transientBlobService,
-		Executor executor,
+		ExecutorService executor,
 		MetricQueryServiceRetriever metricQueryServiceRetriever,
 		LeaderElectionService leaderElectionService) throws Exception;
 
@@ -703,6 +716,12 @@ public abstract class ClusterEntrypoint implements FatalErrorHandler {
 
 		if (restPort >= 0) {
 			configuration.setInteger(RestOptions.PORT, restPort);
+		}
+
+		final String hostname = entrypointClusterConfiguration.getHostname();
+
+		if (hostname != null) {
+			configuration.setString(JobManagerOptions.ADDRESS, hostname);
 		}
 
 		return configuration;

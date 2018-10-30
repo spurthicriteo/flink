@@ -18,6 +18,7 @@
 
 package org.apache.flink.container.entrypoint;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.client.program.PackagedProgram;
 import org.apache.flink.client.program.PackagedProgramUtils;
 import org.apache.flink.client.program.ProgramInvocationException;
@@ -33,7 +34,9 @@ import org.apache.flink.runtime.entrypoint.parser.CommandLineParser;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
 import org.apache.flink.runtime.metrics.MetricRegistry;
+import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
 import org.apache.flink.runtime.resourcemanager.ResourceManager;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerConfiguration;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerRuntimeServices;
@@ -59,15 +62,25 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  */
 public final class StandaloneJobClusterEntryPoint extends JobClusterEntrypoint {
 
+	static final JobID FIXED_JOB_ID = new JobID(0L, 0L);
+
 	private final String[] programArguments;
 
 	@Nonnull
 	private final String jobClassName;
 
-	StandaloneJobClusterEntryPoint(Configuration configuration, @Nonnull String jobClassName, @Nonnull String[] programArguments) {
+	@Nonnull
+	private final SavepointRestoreSettings savepointRestoreSettings;
+
+	StandaloneJobClusterEntryPoint(
+			Configuration configuration,
+			@Nonnull String jobClassName,
+			@Nonnull SavepointRestoreSettings savepointRestoreSettings,
+			@Nonnull String[] programArguments) {
 		super(configuration);
 		this.programArguments = checkNotNull(programArguments);
 		this.jobClassName = checkNotNull(jobClassName);
+		this.savepointRestoreSettings = savepointRestoreSettings;
 	}
 
 	@Override
@@ -75,8 +88,9 @@ public final class StandaloneJobClusterEntryPoint extends JobClusterEntrypoint {
 		final PackagedProgram packagedProgram = createPackagedProgram();
 		final int defaultParallelism = configuration.getInteger(CoreOptions.DEFAULT_PARALLELISM);
 		try {
-			final JobGraph jobGraph = PackagedProgramUtils.createJobGraph(packagedProgram, configuration, defaultParallelism);
+			final JobGraph jobGraph = PackagedProgramUtils.createJobGraph(packagedProgram, configuration, defaultParallelism, FIXED_JOB_ID);
 			jobGraph.setAllowQueuedScheduling(true);
+			jobGraph.setSavepointRestoreSettings(savepointRestoreSettings);
 
 			return jobGraph;
 		} catch (Exception e) {
@@ -108,7 +122,8 @@ public final class StandaloneJobClusterEntryPoint extends JobClusterEntrypoint {
 			MetricRegistry metricRegistry,
 			FatalErrorHandler fatalErrorHandler,
 			ClusterInformation clusterInformation,
-			@Nullable String webInterfaceUrl) throws Exception {
+			@Nullable String webInterfaceUrl,
+			JobManagerMetricGroup jobManagerMetricGroup) throws Exception {
 		final ResourceManagerConfiguration resourceManagerConfiguration = ResourceManagerConfiguration.fromConfiguration(configuration);
 		final ResourceManagerRuntimeServicesConfiguration resourceManagerRuntimeServicesConfiguration = ResourceManagerRuntimeServicesConfiguration.fromConfiguration(configuration);
 		final ResourceManagerRuntimeServices resourceManagerRuntimeServices = ResourceManagerRuntimeServices.fromConfiguration(
@@ -127,7 +142,8 @@ public final class StandaloneJobClusterEntryPoint extends JobClusterEntrypoint {
 			metricRegistry,
 			resourceManagerRuntimeServices.getJobLeaderIdService(),
 			clusterInformation,
-			fatalErrorHandler);
+			fatalErrorHandler,
+			jobManagerMetricGroup);
 	}
 
 	public static void main(String[] args) {
@@ -143,7 +159,7 @@ public final class StandaloneJobClusterEntryPoint extends JobClusterEntrypoint {
 			clusterConfiguration = commandLineParser.parse(args);
 		} catch (FlinkParseException e) {
 			LOG.error("Could not parse command line arguments {}.", args, e);
-			commandLineParser.printHelp();
+			commandLineParser.printHelp(StandaloneJobClusterEntryPoint.class.getSimpleName());
 			System.exit(1);
 		}
 
@@ -151,8 +167,10 @@ public final class StandaloneJobClusterEntryPoint extends JobClusterEntrypoint {
 
 		configuration.setString(ClusterEntrypoint.EXECUTION_MODE, ExecutionMode.DETACHED.toString());
 
-		StandaloneJobClusterEntryPoint entrypoint = new StandaloneJobClusterEntryPoint(configuration,
+		StandaloneJobClusterEntryPoint entrypoint = new StandaloneJobClusterEntryPoint(
+			configuration,
 			clusterConfiguration.getJobClassName(),
+			clusterConfiguration.getSavepointRestoreSettings(),
 			clusterConfiguration.getArgs());
 
 		entrypoint.startCluster();

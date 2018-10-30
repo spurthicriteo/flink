@@ -33,15 +33,20 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 /**
  * Implementation of a {@link RequestIndexer}, using a {@link BulkProcessor}.
  * {@link ActionRequest ActionRequests} will be buffered before sending a bulk request to the Elasticsearch cluster.
+ *
+ * @deprecated This class is not binary compatible with newer Elasticsearch 6+ versions
+ *             (i.e. the {@link #add(UpdateRequest...)} ). However, this module is currently
+ *             compiled against a very old Elasticsearch version.
  */
+@Deprecated
 @Internal
-class BulkProcessorIndexer implements RequestIndexer {
+class PreElasticsearch6BulkProcessorIndexer implements RequestIndexer {
 
 	private final BulkProcessor bulkProcessor;
 	private final boolean flushOnCheckpoint;
 	private final AtomicLong numPendingRequestsRef;
 
-	BulkProcessorIndexer(BulkProcessor bulkProcessor, boolean flushOnCheckpoint, AtomicLong numPendingRequestsRef) {
+	PreElasticsearch6BulkProcessorIndexer(BulkProcessor bulkProcessor, boolean flushOnCheckpoint, AtomicLong numPendingRequestsRef) {
 		this.bulkProcessor = checkNotNull(bulkProcessor);
 		this.flushOnCheckpoint = flushOnCheckpoint;
 		this.numPendingRequestsRef = checkNotNull(numPendingRequestsRef);

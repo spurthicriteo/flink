@@ -16,28 +16,32 @@
  * limitations under the License.
  */
 
-package org.apache.flink.util.function;
+package org.apache.flink.fs.s3presto;
 
-import org.apache.flink.util.ExceptionUtils;
+import org.apache.flink.configuration.Configuration;
 
-import java.util.function.Consumer;
+import org.junit.Test;
+
+import java.net.URI;
+
+import static org.junit.Assert.assertEquals;
 
 /**
- * A checked extension of the {@link Consumer} interface.
- *
- * @param <T> type of the first argument
- * @param <E> type of the thrown exception
+ * Tests that the file system factory picks up the entropy configuration properly.
  */
-public interface ConsumerWithException<T, E extends Throwable> extends Consumer<T> {
+public class PrestoS3EntropyTest {
 
-	void acceptWithException(T value) throws E;
+	@Test
+	public void testEntropyInjectionConfig() throws Exception {
+		final Configuration conf = new Configuration();
+		conf.setString("s3.entropy.key", "__entropy__");
+		conf.setInteger("s3.entropy.length", 7);
 
-	@Override
-	default void accept(T value) {
-		try {
-			acceptWithException(value);
-		} catch (Throwable t) {
-			ExceptionUtils.rethrow(t);
-		}
+		S3FileSystemFactory factory = new S3FileSystemFactory();
+		factory.configure(conf);
+
+		S3PrestoFileSystem fs = (S3PrestoFileSystem) factory.create(new URI("s3://test"));
+		assertEquals("__entropy__", fs.getEntropyInjectionKey());
+		assertEquals(7, fs.generateEntropy().length());
 	}
 }

@@ -25,6 +25,7 @@ import org.apache.flink.runtime.entrypoint.parser.CommandLineParser;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.metrics.MetricRegistry;
+import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
 import org.apache.flink.runtime.resourcemanager.ResourceManager;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerConfiguration;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerRuntimeServices;
@@ -57,7 +58,8 @@ public class StandaloneSessionClusterEntrypoint extends SessionClusterEntrypoint
 			MetricRegistry metricRegistry,
 			FatalErrorHandler fatalErrorHandler,
 			ClusterInformation clusterInformation,
-			@Nullable String webInterfaceUrl) throws Exception {
+			@Nullable String webInterfaceUrl,
+			JobManagerMetricGroup jobManagerMetricGroup) throws Exception {
 		final ResourceManagerConfiguration resourceManagerConfiguration = ResourceManagerConfiguration.fromConfiguration(configuration);
 		final ResourceManagerRuntimeServicesConfiguration resourceManagerRuntimeServicesConfiguration = ResourceManagerRuntimeServicesConfiguration.fromConfiguration(configuration);
 		final ResourceManagerRuntimeServices resourceManagerRuntimeServices = ResourceManagerRuntimeServices.fromConfiguration(
@@ -76,7 +78,8 @@ public class StandaloneSessionClusterEntrypoint extends SessionClusterEntrypoint
 			metricRegistry,
 			resourceManagerRuntimeServices.getJobLeaderIdService(),
 			clusterInformation,
-			fatalErrorHandler);
+			fatalErrorHandler,
+			jobManagerMetricGroup);
 	}
 
 	public static void main(String[] args) {
@@ -92,7 +95,7 @@ public class StandaloneSessionClusterEntrypoint extends SessionClusterEntrypoint
 			entrypointClusterConfiguration = commandLineParser.parse(args);
 		} catch (FlinkParseException e) {
 			LOG.error("Could not parse command line arguments {}.", args, e);
-			commandLineParser.printHelp();
+			commandLineParser.printHelp(StandaloneSessionClusterEntrypoint.class.getSimpleName());
 			System.exit(1);
 		}
 
