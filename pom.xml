@@ -397,7 +397,7 @@ under the License.
 			<dependency>
 				<groupId>org.apache.commons</groupId>
 				<artifactId>commons-compress</artifactId>
-				<version>1.4.1</version>
+				<version>1.18</version>
 			</dependency>
 
 			<!-- Managed dependency required for HBase in flink-hbase -->
@@ -1083,6 +1083,8 @@ under the License.
 
 						<!-- the licenses that are re-bundled -->
 						<exclude>**/packaged_licenses/LICENSE.*.txt</exclude>
+						<exclude>**/licenses/LICENSE*</exclude>
+						<exclude>**/licenses-binary/LICENSE*</exclude>
 
 						<!-- web dashboard config JSON files -->
 						<exclude>flink-runtime-web/web-dashboard/package.json</exclude>
@@ -1323,6 +1325,13 @@ under the License.
 										<exclude>**</exclude>
 									</excludes>
 								</filter>
+								<!-- io.netty:netty brings its own LICENSE.txt which we don't need -->
+								<filter>
+									<artifact>io.netty:netty</artifact>
+									<excludes>
+										<exclude>META-INF/LICENSE.txt</exclude>
+									</excludes>
+								</filter>
 							</filters>
 							<artifactSet>
 								<includes>
@@ -1339,9 +1348,9 @@ under the License.
 								<!-- The service transformer is needed to merge META-INF/services files -->
 								<transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
 								<!-- The ApacheNoticeResourceTransformer collects and aggregates NOTICE files -->
-								<transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer"/>
-								<!-- The ApacheLicenseResourceTransformer prevents duplicate Apache Licenses -->
-								<transformer implementation="org.apache.maven.plugins.shade.resource.ApacheLicenseResourceTransformer"/>
+								<transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer">
+									<projectName>Apache Flink</projectName>
+								</transformer>
 							</transformers>
 						</configuration>
 					</execution>
