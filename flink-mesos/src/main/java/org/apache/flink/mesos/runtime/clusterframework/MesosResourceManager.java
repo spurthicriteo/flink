@@ -703,6 +703,7 @@ public class MesosResourceManager extends ResourceManager<RegisteredMesosWorkerN
 		MesosTaskManagerParameters params = new MesosTaskManagerParameters(
 			resourceProfile.getCpuCores() < 1.0 ? taskManagerParameters.cpus() : resourceProfile.getCpuCores(),
 			taskManagerParameters.gpus(),
+			taskManagerParameters.disk(),
 			taskManagerParameters.containerType(),
 			taskManagerParameters.containerImageName(),
 			new ContaineredTaskManagerParameters(
