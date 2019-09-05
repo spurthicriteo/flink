@@ -69,7 +69,10 @@ class LaunchCoordinator(
             + s"of ${lease.memoryMB()} MB, ${lease.cpuCores()} cpus.")
           schedulerDriver.declineOffer(lease.getOffer.getId)
         }
-      }).build
+      })
+      // avoid situations where we have lots of expired offers and we only expire a few at a time
+      .withRejectAllExpiredOffers()
+      .build
   }
 
   override def postStop(): Unit = {
