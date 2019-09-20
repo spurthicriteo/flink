@@ -763,6 +763,12 @@ public class MesosResourceManager extends ResourceManager<RegisteredMesosWorkerN
 			}
 
 			@Override
+			public TaskSchedulerBuilder withLeaseOfferExpirySecs(long leaseOfferExpirySecs) {
+				builder.withLeaseOfferExpirySecs(leaseOfferExpirySecs);
+				return this;
+			}
+
+			@Override
 			public TaskScheduler build() {
 				return builder.build();
 			}
