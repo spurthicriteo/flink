@@ -514,6 +514,13 @@ object ScalarOperatorGens {
           s"$leftTerm.compareTo($rightTerm) $operator 0"
       }
 
+      // both sides are timestamp with local zone
+      else if (isTimestampWithLocalZone(left.resultType) &&
+          isTimestampWithLocalZone(right.resultType)) {
+        (leftTerm, rightTerm) =>
+          s"$leftTerm.compareTo($rightTerm) $operator 0"
+      }
+
       // both sides are temporal of same type
       else if (isTemporal(left.resultType) &&
           isInteroperable(left.resultType, right.resultType)) {
@@ -1030,8 +1037,7 @@ object ScalarOperatorGens {
         resultNullable = true) {
         operandTerm =>
           s"""
-             |$SQL_TIMESTAMP.fromEpochMillis(
-             | ${qualifyMethod(BuiltInMethod.STRING_TO_TIMESTAMP.method)}($operandTerm.toString()))
+             |${qualifyMethod(BuiltInMethods.STRING_TO_TIMESTAMP)}($operandTerm.toString())
            """.stripMargin
       }
 
@@ -1279,21 +1285,26 @@ object ScalarOperatorGens {
 
       val Seq(resultTerm, nullTerm) = newNames("result", "isNull")
       val resultTypeTerm = primitiveTypeTermForType(resultType)
+      val defaultValue = primitiveDefaultValue(resultType)
 
       val operatorCode = if (ctx.nullCheck) {
         s"""
            |${condition.code}
-           |$resultTypeTerm $resultTerm;
+           |$resultTypeTerm $resultTerm = $defaultValue;
            |boolean $nullTerm;
            |if (${condition.resultTerm}) {
            |  ${trueAction.code}
-           |  $resultTerm = ${trueAction.resultTerm};
            |  $nullTerm = ${trueAction.nullTerm};
+           |  if (!$nullTerm) {
+           |    $resultTerm = ${trueAction.resultTerm};
+           |  }
            |}
            |else {
            |  ${falseAction.code}
-           |  $resultTerm = ${falseAction.resultTerm};
            |  $nullTerm = ${falseAction.nullTerm};
+           |  if (!$nullTerm) {
+           |    $resultTerm = ${falseAction.resultTerm};
+           |  }
            |}
            |""".stripMargin.trim
       }
@@ -2277,8 +2288,7 @@ object ScalarOperatorGens {
         s"${qualifyMethod(BuiltInMethods.STRING_TO_TIME)}($operandTerm.toString())"
       case TIMESTAMP_WITHOUT_TIME_ZONE =>
         s"""
-           |${SQL_TIMESTAMP}.fromEpochMillis(
-           |  ${qualifyMethod(BuiltInMethod.STRING_TO_TIMESTAMP.method)}($operandTerm.toString()))
+           |${qualifyMethod(BuiltInMethods.STRING_TO_TIMESTAMP)}($operandTerm.toString())
            |""".stripMargin
       case _ => throw new UnsupportedOperationException
     }
