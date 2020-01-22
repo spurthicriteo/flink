@@ -170,6 +170,10 @@ The configuration keys in this section are independent of the used resource mana
 
 {% include generated/mesos_task_manager_configuration.html %}
 
+### Kubernetes
+
+{% include generated/kubernetes_config_configuration.html %}
+
 ### High Availability (HA)
 
 {% include generated/high_availability_configuration.html %}
@@ -280,9 +284,9 @@ Previously, the number of network buffers was set manually which became a quite 
 (see below). Since Flink 1.3, it is possible to define a fraction of memory that is being used for
 network buffers with the following configuration parameters:
 
-- `taskmanager.memory.shuffle.fraction`: Fraction of JVM memory to use for network buffers (DEFAULT: 0.1),
-- `taskmanager.memory.shuffle.min`: Minimum memory size for network buffers (DEFAULT: 64MB),
-- `taskmanager.memory.shuffle.max`: Maximum memory size for network buffers (DEFAULT: 1GB), and
+- `taskmanager.memory.network.fraction`: Fraction of JVM memory to use for network buffers (DEFAULT: 0.1),
+- `taskmanager.memory.network.min`: Minimum memory size for network buffers (DEFAULT: 64MB),
+- `taskmanager.memory.network.max`: Maximum memory size for network buffers (DEFAULT: 1GB), and
 - `taskmanager.memory.segment-size`: Size of memory buffers used by the memory manager and the
 network stack in bytes (DEFAULT: 32KB).
 

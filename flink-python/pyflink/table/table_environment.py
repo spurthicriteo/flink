@@ -743,6 +743,8 @@ class TableEnvironment(object):
         :param function: The python user-defined function to register.
         :type function: pyflink.table.udf.UserDefinedFunctionWrapper
         """
+        if not self._is_blink_planner and isinstance(self, BatchTableEnvironment):
+            raise Exception("Python UDF is not supported in old planner under batch mode!")
         self._j_tenv.registerFunction(name, function._judf(self._is_blink_planner,
                                                            self.get_config()._j_table_config))
 
@@ -938,7 +940,7 @@ class TableEnvironment(object):
         :param elements: The elements to create a table from.
         :type elements: list
         :param schema: The schema of the table.
-        :type schema: pyflink.table.types.DataType
+        :type schema: pyflink.table.types.DataType or list[str]
         :param verify_schema: Whether to verify the elements against the schema.
         :type verify_schema: bool
         :return: The result table.
