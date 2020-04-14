@@ -214,6 +214,18 @@ public class LaunchableMesosWorker implements LaunchableTask {
 			.setSlaveId(slaveId)
 			.setTaskId(taskID)
 			.setName(taskID.getValue());
+		Protos.Label.Builder kerbLabelBuilder = Protos.Label.newBuilder();
+		kerbLabelBuilder.setKey("enable_kerberos");
+		kerbLabelBuilder.setValue("1");
+
+		Protos.Label.Builder debugLabelBuilder = Protos.Label.newBuilder();
+		debugLabelBuilder.setKey("MESOS_TERM_DEBUG_GRANTED_TO");
+		debugLabelBuilder.setValue("gr-xdc-usr-mldatplat-operator,gu-hdp-mldatplat");
+
+		Protos.Labels.Builder labelsBuilder = Protos.Labels.newBuilder();
+		labelsBuilder.addAllLabels(Arrays.asList(kerbLabelBuilder.build(), debugLabelBuilder.build()));
+
+		taskInfo.setLabels(labelsBuilder);
 
 		// take needed resources from the overall allocation, under the assumption of adequate resources
 		Set<String> roles = mesosConfiguration.roles();
