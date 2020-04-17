@@ -214,6 +214,7 @@ public class LaunchableMesosWorker implements LaunchableTask {
 			.setSlaveId(slaveId)
 			.setTaskId(taskID)
 			.setName(taskID.getValue());
+		taskInfo.getCommandBuilder().setUser("mldatplat");
 		Protos.Label.Builder kerbLabelBuilder = Protos.Label.newBuilder();
 		kerbLabelBuilder.setKey("enable_kerberos");
 		kerbLabelBuilder.setValue("1");
