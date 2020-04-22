@@ -215,6 +215,10 @@ public class LaunchableMesosWorker implements LaunchableTask {
 			.setTaskId(taskID)
 			.setName(taskID.getValue());
 
+		if (params.getTaskManagerUsername().isDefined()) {
+			taskInfo.getCommandBuilder().setUser(params.getTaskManagerUsername().get());
+		}
+
 		// take needed resources from the overall allocation, under the assumption of adequate resources
 		Set<String> roles = mesosConfiguration.roles();
 		taskInfo.addAllResources(allocation.takeScalar("cpus", taskRequest.getCPUs(), roles));

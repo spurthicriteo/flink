@@ -137,6 +137,14 @@ public class MesosTaskManagerParameters {
 				"Example: az:eu-west-1a,series:t2")
 			.build());
 
+	public static final ConfigOption<String> MESOS_RM_TASKS_USER =
+		key("mesos.resourcemanager.tasks.user")
+			.noDefaultValue()
+			.withDescription(
+				Description.builder()
+					.text("Task Manager user name")
+					.build());
+
 	/**
 	 * Value for {@code MESOS_RESOURCEMANAGER_TASKS_CONTAINER_TYPE} setting. Tells to use the Mesos containerizer.
 	 */
@@ -172,6 +180,8 @@ public class MesosTaskManagerParameters {
 
 	private final Option<String> taskManagerHostname;
 
+	private final Option<String> taskManagerUsername;
+
 	private final List<String> uris;
 
 	public MesosTaskManagerParameters(
@@ -188,6 +198,7 @@ public class MesosTaskManagerParameters {
 			String command,
 			Option<String> bootstrapCommand,
 			Option<String> taskManagerHostname,
+			Option<String> taskManagerUsername,
 			List<String> uris) {
 
 		this.cpus = cpus;
@@ -203,6 +214,7 @@ public class MesosTaskManagerParameters {
 		this.command = Preconditions.checkNotNull(command);
 		this.bootstrapCommand = Preconditions.checkNotNull(bootstrapCommand);
 		this.taskManagerHostname = Preconditions.checkNotNull(taskManagerHostname);
+		this.taskManagerUsername = Preconditions.checkNotNull(taskManagerUsername);
 		this.uris = Preconditions.checkNotNull(uris);
 	}
 
@@ -282,6 +294,13 @@ public class MesosTaskManagerParameters {
 	 * Get the taskManager hostname.
 	 */
 	public Option<String> getTaskManagerHostname() {
+		return taskManagerHostname;
+	}
+
+	/**
+	 * Get the taskManager Username.
+	 */
+	public Option<String> getTaskManagerUsername() {
 		return taskManagerHostname;
 	}
 
@@ -390,6 +409,8 @@ public class MesosTaskManagerParameters {
 		//obtain Task Manager Host Name from the configuration
 		Option<String> taskManagerHostname = Option.apply(flinkConfig.getString(MESOS_TM_HOSTNAME));
 
+		Option<String> taskManagerUserName = Option.apply(flinkConfig.getString(MESOS_RM_TASKS_USER));
+
 		//obtain command-line from the configuration
 		String tmCommand = flinkConfig.getString(MESOS_TM_CMD);
 		Option<String> tmBootstrapCommand = Option.apply(flinkConfig.getString(MESOS_TM_BOOTSTRAP_CMD));
@@ -408,6 +429,7 @@ public class MesosTaskManagerParameters {
 			tmCommand,
 			tmBootstrapCommand,
 			taskManagerHostname,
+			taskManagerUserName,
 			uris);
 	}
 
