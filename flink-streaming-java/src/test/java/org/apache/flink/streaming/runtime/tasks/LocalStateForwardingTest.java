@@ -116,7 +116,8 @@ public class LocalStateForwardingTest extends TestLogger {
 			checkpointMetrics,
 			0L,
 			testStreamTask.getName(),
-			testStreamTask.getCancelables(),
+			asyncCheckpointRunnable -> {},
+			asyncCheckpointRunnable -> {},
 			testStreamTask.getEnvironment(),
 			testStreamTask);
 

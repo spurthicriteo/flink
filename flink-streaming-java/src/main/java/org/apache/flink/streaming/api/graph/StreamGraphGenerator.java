@@ -22,12 +22,14 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.cache.DistributedCache;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
+import org.apache.flink.api.connector.source.Boundedness;
 import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
 import org.apache.flink.runtime.jobgraph.ScheduleMode;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.runtime.state.StateBackend;
+import org.apache.flink.streaming.api.RuntimeExecutionMode;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.operators.InputFormatOperatorFactory;
@@ -37,16 +39,16 @@ import org.apache.flink.streaming.api.transformations.AbstractMultipleInputTrans
 import org.apache.flink.streaming.api.transformations.CoFeedbackTransformation;
 import org.apache.flink.streaming.api.transformations.FeedbackTransformation;
 import org.apache.flink.streaming.api.transformations.KeyedMultipleInputTransformation;
+import org.apache.flink.streaming.api.transformations.LegacySourceTransformation;
 import org.apache.flink.streaming.api.transformations.OneInputTransformation;
 import org.apache.flink.streaming.api.transformations.PartitionTransformation;
 import org.apache.flink.streaming.api.transformations.PhysicalTransformation;
-import org.apache.flink.streaming.api.transformations.SelectTransformation;
 import org.apache.flink.streaming.api.transformations.SideOutputTransformation;
 import org.apache.flink.streaming.api.transformations.SinkTransformation;
 import org.apache.flink.streaming.api.transformations.SourceTransformation;
-import org.apache.flink.streaming.api.transformations.SplitTransformation;
 import org.apache.flink.streaming.api.transformations.TwoInputTransformation;
 import org.apache.flink.streaming.api.transformations.UnionTransformation;
+import org.apache.flink.streaming.api.transformations.WithBoundedness;
 import org.apache.flink.streaming.runtime.io.MultipleInputSelectionHandler;
 
 import org.slf4j.Logger;
@@ -97,14 +99,9 @@ public class StreamGraphGenerator {
 
 	public static final int DEFAULT_LOWER_BOUND_MAX_PARALLELISM = KeyGroupRangeAssignment.DEFAULT_LOWER_BOUND_MAX_PARALLELISM;
 
-	public static final ScheduleMode DEFAULT_SCHEDULE_MODE = ScheduleMode.EAGER;
-
 	public static final TimeCharacteristic DEFAULT_TIME_CHARACTERISTIC = TimeCharacteristic.ProcessingTime;
 
 	public static final String DEFAULT_JOB_NAME = "Flink Streaming Job";
-
-	/** The default buffer timeout (max delay of records in the network stack). */
-	public static final long DEFAULT_NETWORK_BUFFER_TIMEOUT = 100L;
 
 	public static final String DEFAULT_SLOT_SHARING_GROUP = "default";
 
@@ -114,27 +111,21 @@ public class StreamGraphGenerator {
 
 	private final CheckpointConfig checkpointConfig;
 
-	private SavepointRestoreSettings savepointRestoreSettings = SavepointRestoreSettings.none();
-
 	private StateBackend stateBackend;
 
 	private boolean chaining = true;
-
-	private ScheduleMode scheduleMode = DEFAULT_SCHEDULE_MODE;
 
 	private Collection<Tuple2<String, DistributedCache.DistributedCacheEntry>> userArtifacts;
 
 	private TimeCharacteristic timeCharacteristic = DEFAULT_TIME_CHARACTERISTIC;
 
-	private long defaultBufferTimeout = DEFAULT_NETWORK_BUFFER_TIMEOUT;
-
 	private String jobName = DEFAULT_JOB_NAME;
 
-	/**
-	 * If there are some stream edges that can not be chained and the shuffle mode of edge is not
-	 * specified, translate these edges into {@code BLOCKING} result partition type.
-	 */
-	private boolean blockingConnectionsBetweenChains = false;
+	private SavepointRestoreSettings savepointRestoreSettings = SavepointRestoreSettings.none();
+
+	private long defaultBufferTimeout = StreamingJobGraphGenerator.UNDEFINED_NETWORK_BUFFER_TIMEOUT;
+
+	private RuntimeExecutionMode runtimeExecutionMode = RuntimeExecutionMode.STREAMING;
 
 	// This is used to assign a unique ID to iteration source/sink
 	protected static Integer iterationIdCounter = 0;
@@ -149,10 +140,18 @@ public class StreamGraphGenerator {
 	// we have loops, i.e. feedback edges.
 	private Map<Transformation<?>, Collection<Integer>> alreadyTransformed;
 
-	public StreamGraphGenerator(List<Transformation<?>> transformations, ExecutionConfig executionConfig, CheckpointConfig checkpointConfig) {
+	public StreamGraphGenerator(
+			final List<Transformation<?>> transformations,
+			final ExecutionConfig executionConfig,
+			final CheckpointConfig checkpointConfig) {
 		this.transformations = checkNotNull(transformations);
 		this.executionConfig = checkNotNull(executionConfig);
 		this.checkpointConfig = checkNotNull(checkpointConfig);
+	}
+
+	public StreamGraphGenerator setRuntimeExecutionMode(final RuntimeExecutionMode runtimeExecutionMode) {
+		this.runtimeExecutionMode = checkNotNull(runtimeExecutionMode);
+		return this;
 	}
 
 	public StreamGraphGenerator setStateBackend(StateBackend stateBackend) {
@@ -162,11 +161,6 @@ public class StreamGraphGenerator {
 
 	public StreamGraphGenerator setChaining(boolean chaining) {
 		this.chaining = chaining;
-		return this;
-	}
-
-	public StreamGraphGenerator setScheduleMode(ScheduleMode scheduleMode) {
-		this.scheduleMode = scheduleMode;
 		return this;
 	}
 
@@ -190,24 +184,13 @@ public class StreamGraphGenerator {
 		return this;
 	}
 
-	public StreamGraphGenerator setBlockingConnectionsBetweenChains(boolean blockingConnectionsBetweenChains) {
-		this.blockingConnectionsBetweenChains = blockingConnectionsBetweenChains;
-		return this;
-	}
-
 	public void setSavepointRestoreSettings(SavepointRestoreSettings savepointRestoreSettings) {
 		this.savepointRestoreSettings = savepointRestoreSettings;
 	}
 
 	public StreamGraph generate() {
 		streamGraph = new StreamGraph(executionConfig, checkpointConfig, savepointRestoreSettings);
-		streamGraph.setStateBackend(stateBackend);
-		streamGraph.setChaining(chaining);
-		streamGraph.setScheduleMode(scheduleMode);
-		streamGraph.setUserArtifacts(userArtifacts);
-		streamGraph.setTimeCharacteristic(timeCharacteristic);
-		streamGraph.setJobName(jobName);
-		streamGraph.setBlockingConnectionsBetweenChains(blockingConnectionsBetweenChains);
+		configureStreamGraph(streamGraph);
 
 		alreadyTransformed = new HashMap<>();
 
@@ -224,6 +207,49 @@ public class StreamGraphGenerator {
 		return builtStreamGraph;
 	}
 
+	private void configureStreamGraph(final StreamGraph graph) {
+		checkNotNull(graph);
+
+		graph.setStateBackend(stateBackend);
+		graph.setChaining(chaining);
+		graph.setUserArtifacts(userArtifacts);
+		graph.setTimeCharacteristic(timeCharacteristic);
+		graph.setJobName(jobName);
+
+		if (shouldExecuteInBatchMode(runtimeExecutionMode)) {
+			graph.setAllVerticesInSameSlotSharingGroupByDefault(false);
+			graph.setGlobalDataExchangeMode(GlobalDataExchangeMode.POINTWISE_EDGES_PIPELINED);
+			graph.setScheduleMode(ScheduleMode.LAZY_FROM_SOURCES_WITH_BATCH_SLOT_REQUEST);
+			setDefaultBufferTimeout(-1);
+		} else {
+			graph.setAllVerticesInSameSlotSharingGroupByDefault(true);
+			graph.setGlobalDataExchangeMode(GlobalDataExchangeMode.ALL_EDGES_PIPELINED);
+			graph.setScheduleMode(ScheduleMode.EAGER);
+		}
+	}
+
+	private boolean shouldExecuteInBatchMode(final RuntimeExecutionMode configuredMode) {
+		if (checkNotNull(configuredMode) != RuntimeExecutionMode.AUTOMATIC) {
+			return configuredMode == RuntimeExecutionMode.BATCH;
+		}
+
+		final boolean continuousSourceExists = transformations
+				.stream()
+				.anyMatch(transformation ->
+						isUnboundedSource(transformation) ||
+						transformation
+								.getTransitivePredecessors()
+								.stream()
+								.anyMatch(this::isUnboundedSource));
+		return !continuousSourceExists;
+	}
+
+	private boolean isUnboundedSource(final Transformation<?> transformation) {
+		checkNotNull(transformation);
+		return transformation instanceof WithBoundedness &&
+				((WithBoundedness) transformation).getBoundedness() != Boundedness.BOUNDED;
+	}
+
 	/**
 	 * Transforms one {@code Transformation}.
 	 *
@@ -231,7 +257,6 @@ public class StreamGraphGenerator {
 	 * delegates to one of the transformation specific methods.
 	 */
 	private Collection<Integer> transform(Transformation<?> transform) {
-
 		if (alreadyTransformed.containsKey(transform)) {
 			return alreadyTransformed.get(transform);
 		}
@@ -258,16 +283,14 @@ public class StreamGraphGenerator {
 			transformedIds = transformTwoInputTransform((TwoInputTransformation<?, ?, ?>) transform);
 		} else if (transform instanceof AbstractMultipleInputTransformation<?>) {
 			transformedIds = transformMultipleInputTransform((AbstractMultipleInputTransformation<?>) transform);
-		} else if (transform instanceof SourceTransformation<?>) {
+		} else if (transform instanceof SourceTransformation) {
 			transformedIds = transformSource((SourceTransformation<?>) transform);
+		} else if (transform instanceof LegacySourceTransformation<?>) {
+			transformedIds = transformLegacySource((LegacySourceTransformation<?>) transform);
 		} else if (transform instanceof SinkTransformation<?>) {
 			transformedIds = transformSink((SinkTransformation<?>) transform);
 		} else if (transform instanceof UnionTransformation<?>) {
 			transformedIds = transformUnion((UnionTransformation<?>) transform);
-		} else if (transform instanceof SplitTransformation<?>) {
-			transformedIds = transformSplit((SplitTransformation<?>) transform);
-		} else if (transform instanceof SelectTransformation<?>) {
-			transformedIds = transformSelect((SelectTransformation<?>) transform);
 		} else if (transform instanceof FeedbackTransformation<?>) {
 			transformedIds = transformFeedback((FeedbackTransformation<?>) transform);
 		} else if (transform instanceof CoFeedbackTransformation<?>) {
@@ -312,7 +335,10 @@ public class StreamGraphGenerator {
 			streamGraph.setResources(transform.getId(), transform.getMinResources(), transform.getPreferredResources());
 		}
 
-		streamGraph.setManagedMemoryWeight(transform.getId(), transform.getManagedMemoryWeight());
+		streamGraph.setManagedMemoryUseCaseWeights(
+			transform.getId(),
+			transform.getManagedMemoryOperatorScopeUseCaseWeights(),
+			transform.getManagedMemorySlotScopeUseCases());
 
 		return transformedIds;
 	}
@@ -353,56 +379,6 @@ public class StreamGraphGenerator {
 		}
 
 		return resultIds;
-	}
-
-	/**
-	 * Transforms a {@code SplitTransformation}.
-	 *
-	 * <p>We add the output selector to previously transformed nodes.
-	 */
-	private <T> Collection<Integer> transformSplit(SplitTransformation<T> split) {
-
-		Transformation<T> input = split.getInput();
-		Collection<Integer> resultIds = transform(input);
-
-		validateSplitTransformation(input);
-
-		// the recursive transform call might have transformed this already
-		if (alreadyTransformed.containsKey(split)) {
-			return alreadyTransformed.get(split);
-		}
-
-		for (int inputId : resultIds) {
-			streamGraph.addOutputSelector(inputId, split.getOutputSelector());
-		}
-
-		return resultIds;
-	}
-
-	/**
-	 * Transforms a {@code SelectTransformation}.
-	 *
-	 * <p>For this we create a virtual node in the {@code StreamGraph} holds the selected names.
-	 *
-	 * @see org.apache.flink.streaming.api.graph.StreamGraphGenerator
-	 */
-	private <T> Collection<Integer> transformSelect(SelectTransformation<T> select) {
-		Transformation<T> input = select.getInput();
-		Collection<Integer> resultIds = transform(input);
-
-		// the recursive transform might have already transformed this
-		if (alreadyTransformed.containsKey(select)) {
-			return alreadyTransformed.get(select);
-		}
-
-		List<Integer> virtualResultIds = new ArrayList<>();
-
-		for (int inputId : resultIds) {
-			int virtualId = Transformation.getNewNodeId();
-			streamGraph.addVirtualSelectNode(inputId, virtualId, select.getSelectedNames());
-			virtualResultIds.add(virtualId);
-		}
-		return virtualResultIds;
 	}
 
 	/**
@@ -588,6 +564,26 @@ public class StreamGraphGenerator {
 				null,
 				source.getOutputType(),
 				"Source: " + source.getName());
+		int parallelism = source.getParallelism() != ExecutionConfig.PARALLELISM_DEFAULT ?
+				source.getParallelism() : executionConfig.getParallelism();
+		streamGraph.setParallelism(source.getId(), parallelism);
+		streamGraph.setMaxParallelism(source.getId(), source.getMaxParallelism());
+		return Collections.singleton(source.getId());
+	}
+
+	/**
+	 * Transforms a {@code LegacySourceTransformation}.
+	 */
+	private <T> Collection<Integer> transformLegacySource(LegacySourceTransformation<T> source) {
+		String slotSharingGroup = determineSlotSharingGroup(source.getSlotSharingGroup(), Collections.emptyList());
+
+		streamGraph.addLegacySource(source.getId(),
+				slotSharingGroup,
+				source.getCoLocationGroupKey(),
+				source.getOperatorFactory(),
+				null,
+				source.getOutputType(),
+				"Source: " + source.getName());
 		if (source.getOperatorFactory() instanceof InputFormatOperatorFactory) {
 			streamGraph.setInputFormat(source.getId(),
 					((InputFormatOperatorFactory<T>) source.getOperatorFactory()).getInputFormat());
@@ -600,7 +596,7 @@ public class StreamGraphGenerator {
 	}
 
 	/**
-	 * Transforms a {@code SourceTransformation}.
+	 * Transforms a {@code SinkTransformation}.
 	 */
 	private <T> Collection<Integer> transformSink(SinkTransformation<T> sink) {
 
@@ -821,22 +817,6 @@ public class StreamGraphGenerator {
 				}
 			}
 			return inputGroup == null ? DEFAULT_SLOT_SHARING_GROUP : inputGroup;
-		}
-	}
-
-	private <T> void validateSplitTransformation(Transformation<T> input) {
-		if (input instanceof SelectTransformation || input instanceof SplitTransformation) {
-			throw new IllegalStateException("Consecutive multiple splits are not supported. Splits are deprecated. Please use side-outputs.");
-		} else if (input instanceof SideOutputTransformation) {
-			throw new IllegalStateException("Split after side-outputs are not supported. Splits are deprecated. Please use side-outputs.");
-		} else if (input instanceof UnionTransformation) {
-			for (Transformation<T> transformation : ((UnionTransformation<T>) input).getInputs()) {
-				validateSplitTransformation(transformation);
-			}
-		} else if (input instanceof PartitionTransformation) {
-			validateSplitTransformation(((PartitionTransformation) input).getInput());
-		} else {
-			return;
 		}
 	}
 }

@@ -22,6 +22,7 @@ import org.apache.flink.kubernetes.configuration.KubernetesConfigOptions;
 
 import io.fabric8.kubernetes.api.model.LocalObjectReference;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -30,6 +31,8 @@ import java.util.Optional;
  * including the accompanying Kubernetes resources that together represent a Flink application.
  */
 public interface KubernetesParameters {
+
+	String getConfigDirectory();
 
 	String getClusterId();
 
@@ -68,6 +71,12 @@ public interface KubernetesParameters {
 	Map<String, String> getAnnotations();
 
 	/**
+	 * A collection of tolerations that are set to the JobManager and TaskManager Pod(s). Kubernetes taints and
+	 * tolerations work together to ensure that pods are not scheduled onto inappropriate nodes.
+	 */
+	List<Map<String, String>> getTolerations();
+
+	/**
 	 * Directory in Pod that stores the flink-conf.yaml, log4j.properties, and the logback.xml.
 	 */
 	String getFlinkConfDirInPod();
@@ -101,4 +110,14 @@ public interface KubernetesParameters {
 	 * The local directory to locate the custom Hadoop configuration.
 	 */
 	Optional<String> getLocalHadoopConfigurationDirectory();
+
+	/**
+	 * A collection of secret and path pairs that are mounted to the JobManager and TaskManager container(s).
+	 */
+	Map<String, String> getSecretNamesToMountPaths();
+
+	/**
+	 * A collection of customized environments that are attached to the JobManager and TaskManager container(s).
+	 */
+	List<Map<String, String>> getEnvironmentsFromSecrets();
 }

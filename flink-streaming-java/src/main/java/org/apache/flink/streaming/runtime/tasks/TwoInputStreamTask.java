@@ -20,16 +20,16 @@ package org.apache.flink.streaming.runtime.tasks;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.runtime.execution.Environment;
-import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+import org.apache.flink.runtime.io.network.partition.consumer.IndexedInputGate;
 import org.apache.flink.streaming.api.operators.InputSelectable;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.runtime.io.CheckpointedInputGate;
-import org.apache.flink.streaming.runtime.io.InputGateUtil;
 import org.apache.flink.streaming.runtime.io.InputProcessorUtil;
 import org.apache.flink.streaming.runtime.io.StreamTwoInputProcessor;
 import org.apache.flink.streaming.runtime.io.TwoInputSelectionHandler;
 
-import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -46,26 +46,24 @@ public class TwoInputStreamTask<IN1, IN2, OUT> extends AbstractTwoInputStreamTas
 
 	@Override
 	protected void createInputProcessor(
-		Collection<InputGate> inputGates1,
-		Collection<InputGate> inputGates2,
+		List<IndexedInputGate> inputGates1,
+		List<IndexedInputGate> inputGates2,
 		TypeSerializer<IN1> inputDeserializer1,
 		TypeSerializer<IN2> inputDeserializer2) {
 
 		TwoInputSelectionHandler twoInputSelectionHandler = new TwoInputSelectionHandler(
-			headOperator instanceof InputSelectable ? (InputSelectable) headOperator : null);
-
-		InputGate unionedInputGate1 = InputGateUtil.createInputGate(inputGates1.toArray(new InputGate[0]));
-		InputGate unionedInputGate2 = InputGateUtil.createInputGate(inputGates2.toArray(new InputGate[0]));
+			mainOperator instanceof InputSelectable ? (InputSelectable) mainOperator : null);
 
 		// create an input instance for each input
-		CheckpointedInputGate[] checkpointedInputGates = InputProcessorUtil.createCheckpointedInputGatePair(
+		CheckpointedInputGate[] checkpointedInputGates = InputProcessorUtil.createCheckpointedMultipleInputGate(
 			this,
-			getConfiguration().getCheckpointMode(),
-			getEnvironment().getTaskManagerInfo().getConfiguration(),
+			getConfiguration(),
+			getCheckpointCoordinator(),
 			getEnvironment().getMetricGroup().getIOMetricGroup(),
 			getTaskNameWithSubtaskAndId(),
-			unionedInputGate1,
-			unionedInputGate2);
+			mainMailboxExecutor,
+			new List[]{ inputGates1, inputGates2 },
+			Collections.emptyList());
 		checkState(checkpointedInputGates.length == 2);
 
 		inputProcessor = new StreamTwoInputProcessor<>(
@@ -73,12 +71,13 @@ public class TwoInputStreamTask<IN1, IN2, OUT> extends AbstractTwoInputStreamTas
 			inputDeserializer1,
 			inputDeserializer2,
 			getEnvironment().getIOManager(),
+			getEnvironment().getMetricGroup().getIOMetricGroup(),
 			getStreamStatusMaintainer(),
-			headOperator,
+			mainOperator,
 			twoInputSelectionHandler,
 			input1WatermarkGauge,
 			input2WatermarkGauge,
 			operatorChain,
-			setupNumRecordsInCounter(headOperator));
+			setupNumRecordsInCounter(mainOperator));
 	}
 }
